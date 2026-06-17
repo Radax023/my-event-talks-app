@@ -17,6 +17,7 @@ const state = {
 const elements = {
     refreshBtn: document.getElementById('refresh-btn'),
     refreshIcon: document.getElementById('refresh-icon'),
+    exportCsvBtn: document.getElementById('export-csv-btn'),
     statusDot: document.getElementById('status-dot'),
     statusText: document.getElementById('status-text'),
     searchInput: document.getElementById('search-input'),
@@ -58,9 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup Event Listeners
 function setupEventListeners() {
-    // Refresh buttons
+    // Refresh & Export buttons
     elements.refreshBtn.addEventListener('click', () => fetchReleases(true));
     elements.retryBtn.addEventListener('click', () => fetchReleases(true));
+    elements.exportCsvBtn.addEventListener('click', exportToCSV);
     
     // Search
     elements.searchInput.addEventListener('input', handleSearchInput);
@@ -351,6 +353,13 @@ function renderReleases() {
         const cardActions = document.createElement('div');
         cardActions.className = 'card-actions';
         
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-secondary';
+        copyBtn.style.marginRight = 'auto'; // pushes the tweet button to the right end
+        copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Text';
+        copyBtn.addEventListener('click', () => copyCardText(release.text_content));
+        cardActions.appendChild(copyBtn);
+        
         const tweetBtn = document.createElement('button');
         tweetBtn.className = 'btn btn-tweet';
         tweetBtn.innerHTML = '<i class="fa-brands fa-x-twitter"></i> Select & Tweet';
@@ -523,4 +532,68 @@ function showToast(message, type = 'success') {
     toastTimeout = setTimeout(() => {
         elements.toast.classList.remove('show');
     }, 3500);
+}
+
+// Copy Card Text Utility
+async function copyCardText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast('Update copied to clipboard!', 'success');
+    } catch (err) {
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('Update copied to clipboard!', 'success');
+        } catch (e) {
+            showToast('Failed to copy text.', 'error');
+        }
+    }
+}
+
+// Export Filtered Releases to CSV
+function exportToCSV() {
+    const dataToExport = state.filteredReleases;
+    if (dataToExport.length === 0) {
+        showToast('No updates to export.', 'error');
+        return;
+    }
+    
+    // Construct CSV file
+    const headers = ['Date', 'Category', 'URL', 'Content'];
+    const rows = dataToExport.map(release => {
+        // Clean and escape cell text (double double-quotes for CSV, replace newlines)
+        const escapedContent = release.text_content
+            .replace(/"/g, '""')
+            .replace(/\r?\n|\r/g, ' ');
+            
+        return [
+            `"${release.date}"`,
+            `"${release.type}"`,
+            `"${release.url}"`,
+            `"${escapedContent}"`
+        ];
+    });
+    
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    
+    // Trigger download
+    try {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `bigquery_releases_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('CSV Exported Successfully!', 'success');
+    } catch (err) {
+        showToast('CSV export failed.', 'error');
+        console.error('CSV Export Error:', err);
+    }
 }
